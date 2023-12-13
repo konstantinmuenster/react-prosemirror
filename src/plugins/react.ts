@@ -1,3 +1,4 @@
+import type { Node } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 
 /**
@@ -8,12 +9,6 @@ export const ROOT_NODE_KEY = Symbol("@nytimes/react-prosemirror/root-node-key");
 
 export type NodeKey = string | typeof ROOT_NODE_KEY;
 
-/**
- * Identifies a node view constructor as having been created
- * by @nytimes/react-prosemirror
- */
-export const REACT_NODE_VIEW = Symbol("react node view");
-
 export function createNodeKey() {
   return Math.floor(Math.random() * 0xffffff).toString(16);
 }
@@ -21,6 +16,7 @@ export function createNodeKey() {
 export type ReactPluginState = {
   posToKey: Map<number, string>;
   keyToPos: Map<NodeKey, number>;
+  posToNode: Map<number, Node>;
 };
 
 export const reactPluginKey = new PluginKey<ReactPluginState>(
@@ -42,6 +38,7 @@ export function react() {
         const next = {
           posToKey: new Map<number, string>(),
           keyToPos: new Map<NodeKey, number>(),
+          posToNode: new Map<number, Node>(),
         };
         state.doc.descendants((node, pos) => {
           if (node.isText) return false;
@@ -50,6 +47,7 @@ export function react() {
 
           next.posToKey.set(pos, key);
           next.keyToPos.set(key, pos);
+          next.posToNode.set(pos, node);
           return true;
         });
         return next;
@@ -67,20 +65,38 @@ export function react() {
         const next = {
           posToKey: new Map<number, string>(),
           keyToPos: new Map<string, number>(),
+          posToNode: new Map<number, Node>(),
         };
-        const nextKeys = new Set<string>();
         newState.doc.descendants((node, pos) => {
           if (node.isText) return false;
 
           const prevPos = tr.mapping.invert().map(pos);
           const prevKey = value.posToKey.get(prevPos) ?? createNodeKey();
-          // If this transaction adds a new node, there will be multiple
-          // nodes that map back to the same initial position. In this case,
-          // create new keys for new nodes.
-          const key = nextKeys.has(prevKey) ? createNodeKey() : prevKey;
+
+          let key = prevKey;
+          // If this transaction adds a new node, there map be multiple
+          // nodes that map back to the same initial position.
+          if (next.keyToPos.has(prevKey)) {
+            // If the current node was simply moved by the transaction,
+            // keep its key the same, and update the key for the node that
+            // was newly inserted.
+            if (value.posToNode.get(prevPos)?.eq(node)) {
+              // Already checked existence
+              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+              const newNodePos = next.keyToPos.get(prevKey)!;
+              const newNodeKey = createNodeKey();
+              next.posToKey.set(newNodePos, newNodeKey);
+              next.keyToPos.set(newNodeKey, newNodePos);
+            } else {
+              // If the current node is the new one, then generate a new
+              // key for it
+              key = createNodeKey();
+            }
+          }
+
           next.posToKey.set(pos, key);
           next.keyToPos.set(key, pos);
-          nextKeys.add(key);
+          next.posToNode.set(pos, node);
           return true;
         });
         return next;
