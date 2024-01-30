@@ -1,4 +1,5 @@
 import { baseKeymap, toggleMark } from "prosemirror-commands";
+import { inputRules, wrappingInputRule } from "prosemirror-inputrules";
 import { keymap } from "prosemirror-keymap";
 import { Schema } from "prosemirror-model";
 import { EditorState, Plugin } from "prosemirror-state";
@@ -101,7 +102,12 @@ const editorState = EditorState.create({
       schema.text("This is the third paragraph")
     ),
   ]),
-  plugins: [reactKeys()],
+  plugins: [
+    reactKeys(),
+    inputRules({
+      rules: [wrappingInputRule(/^\s*([-+*])\s$/, schema.nodes.list)],
+    }),
+  ],
 });
 
 const Paragraph = forwardRef(function Paragraph(
